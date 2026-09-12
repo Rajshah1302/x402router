@@ -188,6 +188,7 @@ chatRouter.get("/v1/chat/stream/:token", async (req, res, next) => {
       model: priced.model,
       messages: priced.messages,
       maxOutputTokens: priced.quote.maxOutputTokens,
+      thinkingTokens: priced.quote.thinkingTokens,
       temperature: priced.temperature,
     });
 

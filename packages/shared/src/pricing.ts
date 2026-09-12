@@ -42,11 +42,25 @@ export function atomicToUsd(atomic: bigint): number {
   return Number(atomic) / ATOMIC_PER_USDC;
 }
 
+/**
+ * Thinking tokens a reasoning model may spend, as a multiple of the visible
+ * output the caller asked for. Reasoning models bill thinking at the output
+ * rate, so this has to be bought up front along with the answer.
+ */
+export const REASONING_ALLOWANCE = 1;
+
 export interface Quote {
   /** Tokens counted in the prompt. */
   inputTokens: number;
-  /** Output tokens the caller is buying; also the cap applied upstream. */
+  /**
+   * Total output tokens the caller is buying — visible answer plus any
+   * thinking allowance. This is the figure that is priced and capped.
+   */
   maxOutputTokens: number;
+  /** Of that total, what the caller may receive as answer text. */
+  visibleOutputTokens: number;
+  /** Of that total, what the model may spend reasoning before answering. */
+  thinkingTokens: number;
   /** Upstream cost at the authorised ceiling, in USD. */
   providerCostUsd: number;
   /** What the caller pays, in USDC atomic units. */
@@ -62,9 +76,16 @@ export interface Quote {
  * The `exact` x402 scheme settles the quoted amount in full — there is no
  * partial settlement on Hedera today — so the quote has to be an amount we are
  * willing to charge unconditionally. Router402 therefore sells an *authorised
- * budget*: the counted prompt plus `maxOutputTokens` of completion, with the
- * upstream request capped at exactly that ceiling. A caller is never charged
- * for tokens it did not authorise, and never billed a surprise overage.
+ * budget*: the counted prompt plus a bounded completion, with the upstream
+ * request capped at exactly that ceiling. A caller is never charged for tokens
+ * it did not authorise, and never billed a surprise overage.
+ *
+ * `requestedOutputTokens` is the *visible* answer the caller asked for, which
+ * is what `max_tokens` means everywhere else. Reasoning models bill their
+ * thinking at the output rate on top of that, so a thinking allowance is added
+ * here, priced, and passed to the provider as an explicit cap — otherwise a
+ * model can spend the whole budget reasoning and return a truncated answer,
+ * which is exactly what Gemini does when only `maxOutputTokens` is set.
  *
  * Unused output budget is not refunded. Callers control their spend by setting
  * `max_tokens`; analytics reports authorised against actual so the gap is
@@ -74,20 +95,34 @@ export interface Quote {
 export function quoteRequest(
   model: ModelSpec,
   inputTokens: number,
-  maxOutputTokens: number,
+  requestedOutputTokens: number,
   marginFraction = DEFAULT_MARGIN,
 ): Quote {
-  const ceiling = Math.min(maxOutputTokens, model.maxOutputTokens);
+  const thinkingShare = model.reasoning ? REASONING_ALLOWANCE : 0;
+
+  // Fit visible + thinking inside what the model will actually emit.
+  const visibleOutputTokens = Math.max(
+    1,
+    Math.min(
+      requestedOutputTokens,
+      Math.floor(model.maxOutputTokens / (1 + thinkingShare)),
+    ),
+  );
+  const thinkingTokens = Math.floor(visibleOutputTokens * thinkingShare);
+  const maxOutputTokens = visibleOutputTokens + thinkingTokens;
+
   const cost = providerCostUsd(model, {
     inputTokens,
-    outputTokens: ceiling,
+    outputTokens: maxOutputTokens,
   });
   const withMargin = cost * (1 + marginFraction);
   const amountAtomic = max(usdToAtomic(withMargin), MIN_CHARGE_ATOMIC);
 
   return {
     inputTokens,
-    maxOutputTokens: ceiling,
+    maxOutputTokens,
+    visibleOutputTokens,
+    thinkingTokens,
     providerCostUsd: cost,
     amountAtomic,
     amountUsd: atomicToUsd(amountAtomic),

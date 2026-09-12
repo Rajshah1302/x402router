@@ -24,7 +24,8 @@ function toParams(request: CompletionRequest) {
   const { system, turns } = splitSystem(request.messages);
   return {
     model: request.model.upstreamId,
-    // The caller paid for exactly this many output tokens, so this is the cap.
+    // Anthropic counts thinking against `max_tokens`, so the paid-for total is
+    // a true ceiling here and needs no separate thinking budget.
     max_tokens: request.maxOutputTokens,
     ...(system ? { system } : {}),
     ...(request.temperature !== undefined

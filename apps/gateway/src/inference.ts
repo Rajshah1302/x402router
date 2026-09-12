@@ -80,6 +80,7 @@ export async function runCompletion(
       model: priced.model,
       messages: priced.messages,
       maxOutputTokens: priced.quote.maxOutputTokens,
+      thinkingTokens: priced.quote.thinkingTokens,
       temperature: priced.temperature,
     });
 

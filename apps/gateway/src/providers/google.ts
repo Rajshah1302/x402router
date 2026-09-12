@@ -31,7 +31,17 @@ function toContents(messages: ChatMessage[]): Content[] {
 function toConfig(request: CompletionRequest) {
   const { system } = splitSystem(request.messages);
   return {
+    // `maxOutputTokens` bounds total output — thinking included — so the
+    // paid-for total goes here.
     maxOutputTokens: request.maxOutputTokens,
+    // Without a thinking budget a reasoning model will spend nearly the whole
+    // ceiling on thoughts and return a truncated answer (measured: 245 of 256
+    // tokens thought, 7 answered). The budget steers it back. Models that do
+    // not think by default reject `thinkingConfig` outright with a 400, so it
+    // is only sent where it applies.
+    ...(request.model.reasoning
+      ? { thinkingConfig: { thinkingBudget: request.thinkingTokens } }
+      : {}),
     ...(system ? { systemInstruction: system } : {}),
     ...(request.temperature !== undefined
       ? { temperature: request.temperature }

@@ -74,9 +74,25 @@ POST /v1/sessions/current/revoke
 ### Pricing
 
 A request is priced **before it runs**: the prompt is token-counted upstream,
-and the caller buys that prompt plus `max_tokens` of completion, at the model's
+and the caller buys that prompt plus a bounded completion, at the model's
 published rate plus the gateway margin. The upstream call is then capped at
 exactly the authorized ceiling.
+
+`max_tokens` means the **visible answer**, as it does everywhere else. On a
+model that thinks before answering, thinking bills at the output rate, so the
+quote adds a thinking allowance on top and the 402 challenge reports the split:
+
+```
+authorized_output_tokens:   256   ← what you pay for
+authorized_answer_tokens:   128   ← what you asked for
+authorized_thinking_tokens: 128   ← allowance so the answer isn't truncated
+```
+
+This is not cosmetic. Gemini's `maxOutputTokens` bounds total output but does
+not reserve anything for the answer: set it alone and a reasoning model spends
+the budget thinking and returns a stub — measured at 245 of 256 tokens thought,
+7 answered, the reply cut off mid-word. Budgeting thinking explicitly is what
+keeps the answer intact and the spend inside what was paid.
 
 > **Why an authorized budget rather than actual usage?** Hedera currently ships
 > only the x402 `exact` scheme, which settles the quoted amount in full — there
@@ -177,3 +193,10 @@ methods of the `Wallet` interface in `apps/web/lib/wallet.ts` — `accountId` an
   `apps/web/lib/session-context.tsx` is the one place to change.
 - **Prices are a checked-in table.** `packages/shared/src/models.ts` carries
   provider list prices as of 2026-09-13; they are not fetched live.
+- **Gemini can overshoot its ceiling slightly.** `maxOutputTokens` is enforced
+  approximately — 263 tokens returned against a 256 cap in testing. The caller
+  is charged the quoted amount regardless, so the gateway absorbs the few
+  percent. Widen the margin if that matters at volume.
+- **`google/gemini-3.1-pro` needs a paid Google plan.** Its free-tier quota is
+  zero, so it returns `429` until billing is enabled on the API key. The other
+  Gemini models work on the free tier.

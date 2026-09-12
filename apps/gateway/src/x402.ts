@@ -93,6 +93,8 @@ const quotePreview = async (context: HTTPRequestContext) => {
         provider: priced.model.provider,
         input_tokens: priced.quote.inputTokens,
         authorized_output_tokens: priced.quote.maxOutputTokens,
+        authorized_answer_tokens: priced.quote.visibleOutputTokens,
+        authorized_thinking_tokens: priced.quote.thinkingTokens,
         amount_usd: priced.quote.amountUsd,
         amount_atomic: priced.quote.amountAtomic.toString(),
         asset: env.X402_ASSET_ID,

@@ -27,7 +27,11 @@ export interface ModelSpec {
   inputPricePerMTok: number;
   /** USD per 1M output tokens. */
   outputPricePerMTok: number;
-  /** Model reasons before answering; completions skew longer. */
+  /**
+   * Model thinks before answering *by default*. Thinking bills at the output
+   * rate and has to be budgeted explicitly, or it eats the whole allowance —
+   * see `quoteRequest` and the Gemini provider.
+   */
   reasoning: boolean;
 }
 

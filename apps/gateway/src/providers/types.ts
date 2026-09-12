@@ -3,8 +3,13 @@ import type { ChatMessage, ModelSpec } from "@router402/shared";
 export interface CompletionRequest {
   model: ModelSpec;
   messages: ChatMessage[];
-  /** Hard ceiling on output tokens — the amount the caller paid for. */
+  /**
+   * Hard ceiling on total output tokens — visible answer plus thinking — and
+   * exactly the amount the caller paid for.
+   */
   maxOutputTokens: number;
+  /** Share of that ceiling the model may spend reasoning. */
+  thinkingTokens: number;
   temperature?: number;
 }
 
