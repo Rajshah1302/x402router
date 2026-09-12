@@ -1,0 +1,27 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "PORT",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "X402_NETWORK",
+    "X402_FACILITATOR_URL",
+    "X402_PAY_TO_ACCOUNT_ID",
+    "X402_ASSET_ID",
+    "SESSION_JWT_SECRET",
+    "NEXT_PUBLIC_GATEWAY_URL",
+    "NEXT_PUBLIC_X402_NETWORK"
+  ],
+  "tasks": {
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
+    "typecheck": { "dependsOn": ["^build"] },
+    "lint": {},
+    "db:generate": { "cache": false },
+    "db:push": { "cache": false },
+    "db:migrate": { "cache": false },
+    "dev": { "cache": false, "persistent": true }
+  }
+}

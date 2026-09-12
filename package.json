@@ -1,0 +1,22 @@
+{
+  "name": "router402",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "bun@1.3.6",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "db:generate": "turbo run db:generate",
+    "db:push": "turbo run db:push",
+    "db:migrate": "turbo run db:migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.8",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.18.1"
+  },
+  "engines": { "node": ">=20" }
+}

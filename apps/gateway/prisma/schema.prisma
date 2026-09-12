@@ -1,0 +1,150 @@
+// Router402 — wallet-identity, session, metering and settlement ledger.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+
+  runtime      = "nodejs"
+  moduleFormat = "esm"
+  // The generated client is compiled by tsc along with the rest of the
+  // gateway, so its own imports have to carry the runtime `.js` extension.
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// A caller, identified solely by the wallet address they connected with.
+/// There is no account creation: the address is the identity.
+model Account {
+  id            String   @id @default(cuid())
+  /// Hedera account id (0.0.x) or EVM address, lower-cased, as connected.
+  walletAddress String   @unique
+  network       String
+  createdAt     DateTime @default(now())
+  lastSeenAt    DateTime @updatedAt
+
+  sessions          Session[]
+  inferenceRequests InferenceRequest[]
+  payments          Payment[]
+
+  @@index([network])
+}
+
+/// A session key authorised once by the wallet, then used to sign x402
+/// payments without a popup per request. The gateway stores only the public
+/// half — the private session key never leaves the client.
+model Session {
+  id        String @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// Hedera account the session key signs for; payments must originate here.
+  sessionAccountId String
+  /// Public key of the session key, hex-encoded (DER).
+  sessionPublicKey String
+  network          String
+
+  /// Total the session may ever spend, in USDC atomic units.
+  spendCapAtomic BigInt
+  /// Settled so far, in USDC atomic units.
+  spentAtomic    BigInt @default(0)
+  /// Ceiling for any single request, in USDC atomic units.
+  perRequestCapAtomic BigInt
+
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  inferenceRequests InferenceRequest[]
+  payments          Payment[]
+
+  @@index([accountId, createdAt])
+  @@index([sessionAccountId])
+}
+
+enum RequestStatus {
+  PENDING
+  SETTLED
+  FAILED
+}
+
+/// One metered inference call.
+model InferenceRequest {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  sessionId String?
+  session   Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  model    String
+  provider String
+  streamed Boolean @default(false)
+
+  /// Prompt tokens counted before the call — the basis of the quote.
+  inputTokens Int
+  /// Output tokens the caller paid for.
+  authorizedOutputTokens Int
+  /// Output tokens the provider actually produced.
+  outputTokens Int @default(0)
+
+  /// Charged to the caller, USDC atomic units.
+  amountAtomic BigInt
+  /// What the completion cost Router402 upstream, in USD micro-dollars
+  /// (integer, so the ledger never carries float drift).
+  providerCostMicroUsd Int @default(0)
+
+  status       RequestStatus @default(PENDING)
+  errorMessage String?
+  latencyMs    Int?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  payment Payment?
+
+  @@index([accountId, createdAt])
+  @@index([model])
+  @@index([provider])
+  @@index([status])
+}
+
+enum PaymentStatus {
+  PENDING
+  SETTLED
+  FAILED
+}
+
+/// An x402 settlement on Hedera, one per paid request.
+model Payment {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  sessionId String?
+  session   Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  inferenceRequestId String? @unique
+  inferenceRequest   InferenceRequest? @relation(fields: [inferenceRequestId], references: [id], onDelete: SetNull)
+
+  amountAtomic BigInt
+  asset        String
+  network      String
+  scheme       String @default("exact")
+
+  payer       String?
+  payTo       String
+  /// Hedera transaction id returned by the facilitator.
+  transactionId String?
+
+  status       PaymentStatus @default(PENDING)
+  errorMessage String?
+
+  createdAt DateTime  @default(now())
+  settledAt DateTime?
+
+  @@index([accountId, createdAt])
+  @@index([transactionId])
+  @@index([status])
+}
