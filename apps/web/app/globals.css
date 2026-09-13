@@ -607,3 +607,78 @@ tr:last-child td {
   border-color: var(--danger);
   color: var(--danger);
 }
+
+/* --- live settlements ---------------------------------------------------- */
+
+.live-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 540px;
+  overflow-y: auto;
+}
+
+.live-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  animation: live-in 0.35s ease;
+}
+
+.live-row:nth-child(odd) {
+  background: var(--bg-input);
+}
+
+.live-row[data-status="failed"] {
+  color: var(--danger);
+}
+
+.live-amount {
+  color: var(--accent);
+  font-weight: 600;
+  min-width: 120px;
+}
+
+.live-usd {
+  color: var(--text-faint);
+  min-width: 90px;
+}
+
+.live-time {
+  color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+@keyframes live-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  margin-right: 7px;
+  animation: live-pulse 1.2s ease-out;
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(110, 231, 183, 0.6);
+  }
+  100% {
+    box-shadow: 0 0 0 9px rgba(110, 231, 183, 0);
+  }
+}

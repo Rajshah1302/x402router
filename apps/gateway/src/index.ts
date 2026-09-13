@@ -5,8 +5,10 @@ import { env } from "./env.js";
 import { logger } from "./logger.js";
 import { errorHandler } from "./middleware/error.js";
 import { requireSession } from "./middleware/session.js";
+import { harnessHandler } from "./harness/handler.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { chatRouter } from "./routes/chat.js";
+import { harnessRouter } from "./routes/harness.js";
 import { modelsRouter } from "./routes/models.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import { initializeX402, paymentMiddleware, x402Config } from "./x402.js";
@@ -21,7 +23,15 @@ export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
-  app.use(pinoHttp({ logger }));
+  // Per-request logs are useful when debugging but drown out the settlement
+  // feed during a demo; they log at `debug` and surface as `warn` on errors.
+  app.use(
+    pinoHttp({
+      logger,
+      customLogLevel: (_req, res, err) =>
+        err || res.statusCode >= 400 ? "warn" : "debug",
+    }),
+  );
   app.use(
     cors({
       origin: env.corsOrigins,
@@ -55,9 +65,15 @@ export function createApp() {
     res.json({ status: "ok", network: x402Config.network });
   });
 
+  // The harness endpoint. It resolves an opaque token to a wallet, signs the
+  // x402 payment the harness cannot, and forwards to this same app over
+  // loopback so the normal session/payment path runs unchanged.
+  app.use("/h/:token", harnessHandler());
+
   // Discovery and session management are free; inference is not.
   app.use(modelsRouter);
   app.use(sessionsRouter);
+  app.use(harnessRouter);
 
   // Authenticate before the payment middleware rather than inside the route
   // handlers: `requireSession` opens the async context that the x402 pricing

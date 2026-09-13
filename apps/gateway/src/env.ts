@@ -22,6 +22,8 @@ const optionalApiKey = z.preprocess(
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  /** Pino level. `debug` also logs every HTTP request; `info` hides them. */
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   PORT: z.coerce.number().int().positive().default(4021),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
@@ -48,6 +50,8 @@ const EnvSchema = z.object({
   SESSION_JWT_SECRET: z
     .string()
     .min(32, "SESSION_JWT_SECRET must be at least 32 characters"),
+  /** Encrypts harness private keys at rest; falls back to SESSION_JWT_SECRET. */
+  HARNESS_SECRET: z.string().min(32).optional(),
   SESSION_DEFAULT_TTL_HOURS: z.coerce.number().positive().default(24),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
 });

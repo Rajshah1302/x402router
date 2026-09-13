@@ -1,7 +1,7 @@
 "use client";
 
-import { NETWORK } from "@/lib/gateway";
 import { ASSET, atomicToUsd, formatAsset, formatUsd } from "@/lib/asset";
+import { hashscanUrl } from "@/lib/hashscan";
 import type {
   PaymentChallenge,
   PaymentPhase,
@@ -31,16 +31,6 @@ const PHASE_STEP: Record<PaymentPhase, number> = {
   settling: 2,
   settled: 3,
 };
-
-function hashscanUrl(transactionId: string): string {
-  const host = NETWORK === "hedera:mainnet" ? "mainnet" : "testnet";
-  const [account, rest] = transactionId.split("@");
-  if (!account || !rest) {
-    return `https://hashscan.io/${host}/transaction/${transactionId}`;
-  }
-  const [seconds, nanos] = rest.split(".");
-  return `https://hashscan.io/${host}/transaction/${account}-${seconds}-${nanos ?? "0"}`;
-}
 
 export interface PaymentFlowProps {
   phase: PaymentPhase;

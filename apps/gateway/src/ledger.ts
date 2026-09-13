@@ -3,6 +3,7 @@ import type { RequestContext } from "./context.js";
 import { prisma } from "./db.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
+import { printSettlement } from "./payment-feed.js";
 import type { CompletionUsage } from "./providers/types.js";
 
 /** Open the inference row before the provider is called. */
@@ -108,6 +109,14 @@ export async function recordSettlement(context: RequestContext): Promise<void> {
     });
 
     context.paymentId = paymentId;
+
+    printSettlement({
+      success: settlement.success,
+      transactionId: settlement.transactionId,
+      payer: settlement.payer,
+      amountAtomic: settlement.amountAtomic,
+      model: context.priced?.model.id,
+    });
   } catch (error) {
     // The payment is already on-chain; losing the ledger row must not fail the
     // caller's request, but it does need to be loud.

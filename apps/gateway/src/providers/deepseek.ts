@@ -1,8 +1,12 @@
-import type { ChatMessage, ModelSpec } from "@router402/shared";
+import type {
+  ChatMessage,
+  ModelSpec,
+  ToolCall,
+  ToolCallDelta,
+} from "@router402/shared";
 import { env } from "../env.js";
 import { ProviderUnavailableError } from "./errors.js";
 import {
-  splitSystem,
   type CompletionChunk,
   type CompletionRequest,
   type CompletionResult,
@@ -23,11 +27,17 @@ import {
  * reasoning models: they return `reasoning_content` alongside `content` and
  * bill the thinking tokens as completion tokens, which is exactly how the
  * catalogue's reasoning models are priced.
+ *
+ * Messages are passed through in OpenAI's shape, so tool calls and tool
+ * results work unchanged — that is what lets an agentic harness drive it.
  */
 
 interface DeepSeekMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  name?: string;
 }
 
 interface DeepSeekUsage {
@@ -36,8 +46,12 @@ interface DeepSeekUsage {
 }
 
 interface DeepSeekChoice {
-  message?: { content?: string | null };
-  delta?: { content?: string | null; reasoning_content?: string | null };
+  message?: { content?: string | null; tool_calls?: ToolCall[] };
+  delta?: {
+    content?: string | null;
+    tool_calls?: ToolCallDelta[];
+    reasoning_content?: string | null;
+  };
   finish_reason?: string | null;
 }
 
@@ -62,8 +76,13 @@ function config(): { apiKey: string; baseUrl: string } {
 }
 
 function toMessages(messages: ChatMessage[]): DeepSeekMessage[] {
-  const { system, turns } = splitSystem(messages);
-  return system ? [{ role: "system", content: system }, ...turns] : turns;
+  return messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+    ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+    ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+    ...(message.name ? { name: message.name } : {}),
+  }));
 }
 
 function toParams(request: CompletionRequest, stream: boolean) {
@@ -75,6 +94,12 @@ function toParams(request: CompletionRequest, stream: boolean) {
     max_tokens: request.maxOutputTokens,
     ...(request.temperature !== undefined
       ? { temperature: request.temperature }
+      : {}),
+    ...(request.tools && request.tools.length > 0
+      ? { tools: request.tools }
+      : {}),
+    ...(request.tool_choice !== undefined
+      ? { tool_choice: request.tool_choice }
       : {}),
     ...(stream
       ? { stream: true, stream_options: { include_usage: true } }
@@ -97,6 +122,8 @@ function finishReason(
       return "length";
     case "content_filter":
       return "content_filter";
+    case "tool_calls":
+      return "tool_calls";
     default:
       return "stop";
   }
@@ -119,7 +146,10 @@ function upstreamError(status: number, body: string): Error {
 function estimateTokens(messages: ChatMessage[]): number {
   let total = 0;
   for (const message of messages) {
-    total += Math.ceil(message.content.length / 4) + 4;
+    total += Math.ceil((message.content?.length ?? 0) / 4) + 4;
+    if (message.tool_calls) {
+      total += Math.ceil(JSON.stringify(message.tool_calls).length / 4);
+    }
   }
   return Math.max(1, total);
 }
@@ -156,6 +186,9 @@ export function createDeepSeekProvider(id: "anthropic" | "google"): Provider {
         text: choice?.message?.content ?? "",
         usage: usageOf(body.usage),
         finishReason: finishReason(choice?.finish_reason),
+        ...(choice?.message?.tool_calls
+          ? { toolCalls: choice.message.tool_calls }
+          : {}),
       };
     },
 
@@ -201,7 +234,7 @@ export function createDeepSeekProvider(id: "anthropic" | "google"): Provider {
           const data = line.slice("data:".length).trim();
           if (data === "[DONE]") continue;
 
-          let event: DeepSeekResponse & { usage?: DeepSeekUsage };
+          let event: DeepSeekResponse;
           try {
             event = JSON.parse(data);
           } catch {
@@ -209,13 +242,17 @@ export function createDeepSeekProvider(id: "anthropic" | "google"): Provider {
           }
 
           const choice = event.choices?.[0];
+          const delta = choice?.delta;
 
           // Only the visible answer is streamed; `reasoning_content` is the
           // model's private thinking and never reaches the caller.
-          const delta = choice?.delta?.content;
-          if (typeof delta === "string" && delta.length > 0) {
-            text += delta;
-            yield { type: "delta", text: delta };
+          if (typeof delta?.content === "string" && delta.content.length > 0) {
+            text += delta.content;
+            yield { type: "delta", text: delta.content };
+          }
+
+          if (delta?.tool_calls && delta.tool_calls.length > 0) {
+            yield { type: "delta", toolCalls: delta.tool_calls };
           }
 
           if (choice?.finish_reason) reason = choice.finish_reason;

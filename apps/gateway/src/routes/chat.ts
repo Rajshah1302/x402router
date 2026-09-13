@@ -199,6 +199,8 @@ chatRouter.get("/v1/chat/stream/:token", async (req, res, next) => {
       maxOutputTokens: priced.quote.maxOutputTokens,
       thinkingTokens: priced.quote.thinkingTokens,
       temperature: priced.temperature,
+      tools: priced.tools,
+      tool_choice: priced.tool_choice,
     });
 
     for await (const chunk of stream) {
@@ -206,7 +208,14 @@ chatRouter.get("/v1/chat/stream/:token", async (req, res, next) => {
         send({
           ...base,
           choices: [
-            { index: 0, delta: { content: chunk.text }, finish_reason: null },
+            {
+              index: 0,
+              delta: {
+                ...(chunk.text ? { content: chunk.text } : {}),
+                ...(chunk.toolCalls ? { tool_calls: chunk.toolCalls } : {}),
+              },
+              finish_reason: null,
+            },
           ],
         });
         continue;

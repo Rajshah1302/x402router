@@ -5,7 +5,13 @@ import {
   type RoutesConfig,
 } from "@x402/core/server";
 import type { HTTPRequestContext } from "@x402/core/server";
-import type { Network } from "@x402/core/types";
+import type {
+  Network,
+  PaymentPayload,
+  PaymentRequirements,
+} from "@x402/core/types";
+import { encodePaymentSignatureHeader } from "@x402/core/http";
+import { createClientHederaSigner, PrivateKey } from "@x402/hedera";
 import { ExactHederaScheme } from "@x402/hedera/exact/server";
 import { paymentMiddlewareFromHTTPServer } from "@x402/express";
 import { currentContext } from "./context.js";
@@ -154,3 +160,50 @@ export const x402Config = {
   facilitatorUrl: env.X402_FACILITATOR_URL,
   scheme: "exact" as const,
 };
+
+/** The facilitator's Hedera fee payer, learned when the server initializes. */
+export function hederaFeePayer(): string | undefined {
+  const kind = resourceServer.getSupportedKind(2, network, "exact");
+  return (kind?.extra as { feePayer?: string } | undefined)?.feePayer;
+}
+
+/**
+ * Build the `PAYMENT-SIGNATURE` a harness would have produced.
+ *
+ * A harness cannot sign, so the gateway signs on the wallet's behalf: it prices
+ * the exact body the middleware will price, builds the Hedera transfer with the
+ * wallet key, and returns the encoded payload. Injecting this header lets the
+ * existing x402 middleware verify and settle it unchanged.
+ */
+export async function createHarnessPaymentHeader(
+  body: unknown,
+  payerAccountId: string,
+  privateKeyDer: string,
+): Promise<string> {
+  const priced = await priceRequest(body);
+  const feePayer = hederaFeePayer();
+
+  const requirements: PaymentRequirements = {
+    scheme: "exact",
+    network,
+    amount: priced.quote.amountAtomic.toString(),
+    asset: env.X402_ASSET_ID,
+    payTo: env.X402_PAY_TO_ACCOUNT_ID,
+    maxTimeoutSeconds: 120,
+    extra: feePayer ? { feePayer } : {},
+  };
+
+  const key = PrivateKey.fromStringDer(privateKeyDer.trim().replace(/^0x/, ""));
+  const signer = createClientHederaSigner(payerAccountId, key, { network });
+  const transaction = await signer.createPartiallySignedTransferTransaction(
+    requirements,
+  );
+
+  const payload: PaymentPayload = {
+    x402Version: 2,
+    accepted: requirements,
+    payload: { transaction },
+  };
+
+  return encodePaymentSignatureHeader(payload);
+}

@@ -8,6 +8,7 @@ import { atomicToUsd } from "@/lib/asset";
 
 const LINKS = [
   { href: "/", label: "Chat" },
+  { href: "/live", label: "Live" },
   { href: "/analytics", label: "Analytics" },
   { href: "/settings", label: "Settings" },
 ];

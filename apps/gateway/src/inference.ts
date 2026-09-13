@@ -45,7 +45,11 @@ export function toChatCompletionResponse(
     choices: [
       {
         index: 0,
-        message: { role: "assistant", content: result.text },
+        message: {
+          role: "assistant",
+          content: result.text.length > 0 ? result.text : null,
+          ...(result.toolCalls ? { tool_calls: result.toolCalls } : {}),
+        },
         finish_reason: result.finishReason,
       },
     ],
@@ -82,6 +86,8 @@ export async function runCompletion(
       maxOutputTokens: priced.quote.maxOutputTokens,
       thinkingTokens: priced.quote.thinkingTokens,
       temperature: priced.temperature,
+      tools: priced.tools,
+      tool_choice: priced.tool_choice,
     });
 
     await closeInferenceRequest({

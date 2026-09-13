@@ -29,6 +29,7 @@ model Account {
   sessions          Session[]
   inferenceRequests InferenceRequest[]
   payments          Payment[]
+  harnessTokens     HarnessToken[]
 
   @@index([network])
 }
@@ -147,4 +148,37 @@ model Payment {
   @@index([accountId, createdAt])
   @@index([transactionId])
   @@index([status])
+}
+
+/// A credential that lets an external AI harness (opencode, Cursor, an SDK)
+/// call the gateway as the wallet, paying x402 automatically.
+///
+/// The wallet's private key is held here, encrypted at rest, because a harness
+/// cannot sign for itself. That makes this custodial and testnet-only: the
+/// session caps bound what a leaked URL can spend, and revoking the token stops
+/// it immediately.
+model HarnessToken {
+  id        String  @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the bearer token. The token itself is shown once, never stored.
+  tokenHash String @unique
+  /// Wallet private key (DER hex), AES-256-GCM encrypted. Testnet only.
+  privateKeyEnc String
+
+  sessionAccountId String
+  network          String
+
+  /// Caps the gateway opens sessions with on the harness's behalf.
+  spendCapAtomic      BigInt
+  perRequestCapAtomic BigInt
+  /// How long each auto-opened session lasts, in hours.
+  ttlHours            Int    @default(24)
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([accountId, createdAt])
 }

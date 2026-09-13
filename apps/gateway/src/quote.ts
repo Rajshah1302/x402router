@@ -27,6 +27,8 @@ export interface PricedRequest {
   messages: ChatCompletionRequest["messages"];
   temperature: number | undefined;
   stream: boolean;
+  tools: ChatCompletionRequest["tools"];
+  tool_choice: ChatCompletionRequest["tool_choice"];
   quote: Quote;
 }
 
@@ -77,11 +79,16 @@ function parseBody(body: unknown): ChatCompletionRequest {
 
   for (const message of candidate.messages) {
     if (
-      typeof message?.content !== "string" ||
-      !["system", "user", "assistant"].includes(message?.role)
+      !message ||
+      !["system", "user", "assistant", "tool"].includes(message.role)
     ) {
       throw new InvalidRequestError(
-        "Each message needs a string `content` and a role of system, user or assistant",
+        "Each message needs a role of system, user, assistant or tool",
+      );
+    }
+    if (message.content !== null && typeof message.content !== "string") {
+      throw new InvalidRequestError(
+        "Each message's `content` must be a string or null",
       );
     }
   }
@@ -99,6 +106,8 @@ function parseBody(body: unknown): ChatCompletionRequest {
     max_tokens: candidate.max_tokens,
     temperature: candidate.temperature,
     stream: candidate.stream ?? false,
+    tools: candidate.tools,
+    tool_choice: candidate.tool_choice,
   };
 }
 
@@ -132,6 +141,8 @@ export async function priceRequest(body: unknown): Promise<PricedRequest> {
     messages: request.messages,
     temperature: request.temperature,
     stream: request.stream ?? false,
+    tools: request.tools,
+    tool_choice: request.tool_choice,
     quote: quoteRequest(
       model,
       inputTokens,

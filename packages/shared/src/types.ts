@@ -1,10 +1,33 @@
 /** Wire contracts shared by the gateway and the web client. */
 
-export type ChatRole = "system" | "user" | "assistant";
+export type ChatRole = "system" | "user" | "assistant" | "tool";
+
+/** A function call the model asked to make. */
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+/** A function the model may call, in OpenAI's wire shape. */
+export interface ToolDefinition {
+  type: "function";
+  function: {
+    name: string;
+    description?: string;
+    parameters?: unknown;
+  };
+}
 
 export interface ChatMessage {
   role: ChatRole;
-  content: string;
+  /** Null on an assistant turn that only calls tools. */
+  content: string | null;
+  /** Present on assistant turns that call tools. */
+  tool_calls?: ToolCall[];
+  /** Present on a `tool` turn, linking the result to its call. */
+  tool_call_id?: string;
+  name?: string;
 }
 
 /** OpenRouter / OpenAI-compatible request body for `POST /v1/chat/completions`. */
@@ -14,6 +37,9 @@ export interface ChatCompletionRequest {
   max_tokens?: number;
   temperature?: number;
   stream?: boolean;
+  /** Tools the model may call (agentic harnesses send these). */
+  tools?: ToolDefinition[];
+  tool_choice?: unknown;
 }
 
 export interface ChatCompletionUsage {
@@ -25,7 +51,7 @@ export interface ChatCompletionUsage {
 export interface ChatCompletionChoice {
   index: number;
   message: ChatMessage;
-  finish_reason: "stop" | "length" | "content_filter" | "error";
+  finish_reason: "stop" | "length" | "content_filter" | "tool_calls" | "error";
 }
 
 export interface ChatCompletionResponse {
@@ -39,6 +65,21 @@ export interface ChatCompletionResponse {
   x402: RequestSettlement;
 }
 
+/** A streamed tool-call fragment; arguments arrive in pieces across chunks. */
+export interface ToolCallDelta {
+  index: number;
+  id?: string;
+  type?: "function";
+  function?: { name?: string; arguments?: string };
+}
+
+/** The `delta` object on a streamed chunk. */
+export interface ChatCompletionDelta {
+  role?: ChatRole;
+  content?: string | null;
+  tool_calls?: ToolCallDelta[];
+}
+
 export interface ChatCompletionChunk {
   id: string;
   object: "chat.completion.chunk";
@@ -46,7 +87,7 @@ export interface ChatCompletionChunk {
   model: string;
   choices: Array<{
     index: number;
-    delta: Partial<ChatMessage>;
+    delta: ChatCompletionDelta;
     finish_reason: ChatCompletionChoice["finish_reason"] | null;
   }>;
   usage?: ChatCompletionUsage;
