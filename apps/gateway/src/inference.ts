@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { atomicToUsd, type ChatCompletionResponse, type RequestSettlement } from "@router402/shared";
+import type { ChatCompletionResponse, RequestSettlement } from "@router402/shared";
 import type { RequestContext } from "./context.js";
 import { env } from "./env.js";
 import {
@@ -18,7 +18,8 @@ export function settlementOf(
 ): RequestSettlement {
   return {
     amountAtomic: priced.quote.amountAtomic.toString(),
-    amountUsd: atomicToUsd(priced.quote.amountAtomic),
+    // Already computed against the configured asset by `quoteRequest`.
+    amountUsd: priced.quote.amountUsd,
     authorizedOutputTokens: priced.quote.maxOutputTokens,
     actualOutputTokens,
     network: env.X402_NETWORK,

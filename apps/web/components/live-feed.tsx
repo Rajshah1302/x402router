@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AnalyticsResponse, RecentPayment } from "@router402/shared";
 import { formatAsset, formatUsd } from "@/lib/asset";
-import { fetchAnalytics } from "@/lib/gateway";
+import { fetchAnalytics, fetchAudit, type AuditInfo } from "@/lib/gateway";
 import { hashscanUrl } from "@/lib/hashscan";
 import { useSession } from "@/lib/session-context";
 
@@ -18,8 +18,13 @@ export function LiveFeed() {
   const { payFetch, token } = useSession();
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [audit, setAudit] = useState<AuditInfo | null>(null);
   const [pulse, setPulse] = useState(0);
   const topId = useRef<string | null>(null);
+
+  useEffect(() => {
+    fetchAudit().then(setAudit).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!payFetch || !token) return;
@@ -61,6 +66,19 @@ export function LiveFeed() {
       <p className="subtitle">
         Every call the harness makes settles on Hedera. This polls the gateway
         every few seconds.
+        {audit?.enabled && audit.hashscanUrl ? (
+          <>
+            {" "}
+            <a
+              className="payflow-tx"
+              href={audit.hashscanUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Audit topic ↗
+            </a>
+          </>
+        ) : null}
       </p>
 
       {error ? (

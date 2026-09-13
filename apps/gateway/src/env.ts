@@ -20,6 +20,12 @@ const optionalApiKey = z.preprocess(
   z.string().min(1).optional(),
 );
 
+/** A Hedera entity id that reads as unset when blank. */
+const optionalEntityId = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().regex(/^\d+\.\d+\.\d+$/).optional(),
+);
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   /** Pino level. `debug` also logs every HTTP request; `info` hides them. */
@@ -54,6 +60,12 @@ const EnvSchema = z.object({
   HARNESS_SECRET: z.string().min(32).optional(),
   SESSION_DEFAULT_TTL_HOURS: z.coerce.number().positive().default(24),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
+
+  // HCS audit trail: each settlement is published to a topic. Off unless the
+  // topic and the submitting operator are both configured.
+  HCS_AUDIT_TOPIC_ID: optionalEntityId,
+  HCS_AUDIT_OPERATOR_ID: optionalEntityId,
+  HCS_AUDIT_OPERATOR_KEY: optionalApiKey,
 });
 
 const parsed = EnvSchema.safeParse(process.env);

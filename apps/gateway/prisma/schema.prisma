@@ -145,6 +145,11 @@ model Payment {
   createdAt DateTime  @default(now())
   settledAt DateTime?
 
+  /// HCS audit trail: hash of the published record and where it landed.
+  auditHash         String?
+  hcsTopicId        String?
+  hcsSequenceNumber Int?
+
   @@index([accountId, createdAt])
   @@index([transactionId])
   @@index([status])

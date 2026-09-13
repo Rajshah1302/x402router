@@ -8,6 +8,7 @@ import { requireSession } from "./middleware/session.js";
 import { harnessHandler } from "./harness/handler.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { chatRouter } from "./routes/chat.js";
+import { discoveryRouter } from "./routes/discovery.js";
 import { harnessRouter } from "./routes/harness.js";
 import { modelsRouter } from "./routes/models.js";
 import { sessionsRouter } from "./routes/sessions.js";
@@ -71,6 +72,7 @@ export function createApp() {
   app.use("/h/:token", harnessHandler());
 
   // Discovery and session management are free; inference is not.
+  app.use(discoveryRouter);
   app.use(modelsRouter);
   app.use(sessionsRouter);
   app.use(harnessRouter);

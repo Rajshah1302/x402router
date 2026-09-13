@@ -11,6 +11,7 @@ import type {
   PaymentRequirements,
 } from "@x402/core/types";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { createClientHederaSigner, PrivateKey } from "@x402/hedera";
 import { ExactHederaScheme } from "@x402/hedera/exact/server";
 import { paymentMiddlewareFromHTTPServer } from "@x402/express";
@@ -118,15 +119,59 @@ const paymentOption = {
   price: dynamicPrice,
 };
 
+const chatInputSchema = {
+  type: "object",
+  properties: {
+    model: { type: "string" },
+    messages: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          role: { type: "string" },
+          content: { type: "string" },
+        },
+        required: ["role", "content"],
+      },
+    },
+    max_tokens: { type: "integer" },
+    temperature: { type: "number" },
+  },
+  required: ["messages"],
+};
+
 const routes: RoutesConfig = {
   "POST /v1/chat/completions": {
-    description:
-      "OpenRouter-compatible chat completion, billed per call in USDC on Hedera",
+    description: `OpenRouter-compatible chat completion, billed per call in ${env.paymentAsset.symbol} on Hedera`,
     mimeType: "application/json",
     serviceName: "Router402",
     tags: ["ai", "inference", "llm"],
     accepts: [paymentOption],
     unpaidResponseBody: quotePreview,
+    // Publishes this resource to the x402 Bazaar so agents can discover it.
+    extensions: declareDiscoveryExtension({
+      bodyType: "json",
+      input: {
+        model: "anthropic/claude-sonnet-5",
+        messages: [{ role: "user", content: "Explain x402 in one sentence." }],
+        max_tokens: 256,
+      },
+      inputSchema: chatInputSchema,
+      output: {
+        example: {
+          id: "chatcmpl_abc123",
+          object: "chat.completion",
+          model: "anthropic/claude-sonnet-5",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "…" },
+              finish_reason: "stop",
+            },
+          ],
+        },
+      },
+    }),
   },
   // Pays for a completion and returns a one-time delivery ticket; the tokens
   // themselves come back over GET /v1/chat/stream/:token, which is already
@@ -138,6 +183,23 @@ const routes: RoutesConfig = {
     tags: ["ai", "inference", "llm", "streaming"],
     accepts: [paymentOption],
     unpaidResponseBody: quotePreview,
+    extensions: declareDiscoveryExtension({
+      bodyType: "json",
+      input: {
+        model: "anthropic/claude-sonnet-5",
+        messages: [{ role: "user", content: "Write a haiku about x402." }],
+        max_tokens: 256,
+      },
+      inputSchema: chatInputSchema,
+      output: {
+        example: {
+          delivery_token: "…",
+          expires_at: "2026-09-13T00:00:00.000Z",
+          model: "anthropic/claude-sonnet-5",
+          quote: { amount_usd: 0.0035, authorized_output_tokens: 256 },
+        },
+      },
+    }),
   },
 };
 

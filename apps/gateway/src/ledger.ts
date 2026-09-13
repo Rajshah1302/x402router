@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { providerCostUsd, type ModelSpec } from "@router402/shared";
+import { submitAuditInBackground } from "./audit/hcs.js";
 import type { RequestContext } from "./context.js";
 import { prisma } from "./db.js";
 import { env } from "./env.js";
@@ -117,6 +119,51 @@ export async function recordSettlement(context: RequestContext): Promise<void> {
       amountAtomic: settlement.amountAtomic,
       model: context.priced?.model.id,
     });
+
+    // Publish to HCS in the background so consensus latency never delays the
+    // caller; the payment is already on-chain and recorded either way.
+    submitAuditInBackground(
+      {
+        sessionId: context.sessionId,
+        accountId: context.accountId,
+        payer: settlement.payer,
+        payTo: env.X402_PAY_TO_ACCOUNT_ID,
+        asset: settlement.asset,
+        network: settlement.network,
+        amountAtomic: settlement.amountAtomic.toString(),
+        transactionId: settlement.transactionId,
+        createdAt: new Date().toISOString(),
+        ...(context.inferenceRequestId
+          ? { inferenceRequestId: context.inferenceRequestId }
+          : {}),
+        ...(context.priced ? { model: context.priced.model.id } : {}),
+        ...(context.priced
+          ? {
+              quoteHash: createHash("sha256")
+                .update(
+                  JSON.stringify({
+                    model: context.priced.model.id,
+                    inputTokens: context.priced.quote.inputTokens,
+                    maxOutputTokens: context.priced.quote.maxOutputTokens,
+                    amountAtomic:
+                      context.priced.quote.amountAtomic.toString(),
+                  }),
+                )
+                .digest("hex"),
+            }
+          : {}),
+      },
+      async (result) => {
+        await prisma.payment.update({
+          where: { id: paymentId },
+          data: {
+            auditHash: result.auditHash,
+            hcsTopicId: result.topicId,
+            hcsSequenceNumber: result.sequenceNumber,
+          },
+        });
+      },
+    );
   } catch (error) {
     // The payment is already on-chain; losing the ledger row must not fail the
     // caller's request, but it does need to be loud.

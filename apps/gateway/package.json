@@ -21,6 +21,7 @@
     "@router402/shared": "workspace:*",
     "@x402/core": "^2.25.0",
     "@x402/express": "^2.25.0",
+    "@x402/extensions": "^2.25.0",
     "@x402/hedera": "^2.25.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",

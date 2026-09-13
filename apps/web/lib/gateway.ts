@@ -55,6 +55,19 @@ export async function fetchModels(): Promise<ModelOption[]> {
   return body.data;
 }
 
+export interface AuditInfo {
+  enabled: boolean;
+  topicId?: string;
+  hashscanUrl?: string;
+}
+
+/** The public HCS audit topic, if the gateway has one configured. */
+export async function fetchAudit(): Promise<AuditInfo> {
+  return (await unwrap(
+    await fetch(`${GATEWAY_URL}/v1/audit`),
+  )) as AuditInfo;
+}
+
 export interface SessionTerms {
   spendCapUsd: number;
   perRequestCapUsd: number;
