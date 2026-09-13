@@ -10,3 +10,4 @@ out/
 !.env.example
 .DS_Store
 apps/gateway/src/generated/
+.neon

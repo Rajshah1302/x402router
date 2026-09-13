@@ -13,10 +13,8 @@ RUN bun install
 # packages/shared must be built before the gateway's tsc resolves its types.
 RUN bun run --filter @router402/shared build
 
-# prisma.config.ts reads DATABASE_URL even for generate, which never connects.
-RUN DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
-    bun run --filter @router402/gateway db:generate
-
+# The gateway's build script runs `prisma generate` first (the generated client
+# is gitignored), then tsc.
 RUN bun run --filter @router402/gateway build
 
 ENV NODE_ENV=production
