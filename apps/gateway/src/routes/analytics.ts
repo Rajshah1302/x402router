@@ -1,13 +1,13 @@
 import { Router } from "express";
 import {
   assetAtomicToUsd,
-  findModel,
   type AnalyticsResponse,
   type BreakdownRow,
   type RecentPayment,
   type RecentRequest,
   type SpendBucket,
 } from "@router402/shared";
+import { findModel } from "../catalogue.js";
 import { env } from "../env.js";
 import { prisma } from "../db.js";
 

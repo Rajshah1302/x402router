@@ -18,6 +18,7 @@
     "@hiero-ledger/sdk": "^2.85.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@router402/ens": "workspace:*",
     "@router402/shared": "workspace:*",
     "@x402/core": "^2.25.0",
     "@x402/express": "^2.25.0",

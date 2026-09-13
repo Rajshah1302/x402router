@@ -59,6 +59,15 @@ model Session {
   expiresAt DateTime
   revokedAt DateTime?
 
+  /// ENSv2 name this session is registered as, e.g.
+  /// `sabc123.keys.router402.eth`. Null when ENS is not configured, or when
+  /// registration failed — the session still works, it just has no on-chain
+  /// half. The registry is the authority on whether the name is still live.
+  ensName  String?
+  /// Address owning that name: the caller's EVM alias when their Hedera
+  /// account has one, otherwise the gateway operator.
+  ensOwner String?
+
   inferenceRequests InferenceRequest[]
   payments          Payment[]
 

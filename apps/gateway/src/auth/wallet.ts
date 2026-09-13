@@ -38,6 +38,50 @@ export function authorizationMessage(auth: SessionAuthorization): string {
 
 interface MirrorAccountResponse {
   key?: { _type?: string; key?: string } | null;
+  evm_address?: string | null;
+}
+
+/**
+ * The EVM address a Hedera account maps to, if it has one.
+ *
+ * ECDSA-backed accounts carry an EVM alias derived from the same key, so the
+ * holder can sign for that address on an EVM chain. Router402 uses it as the
+ * owner of the session's ENS name: the caller then genuinely owns the name and
+ * can unregister the session from Sepolia themselves, without the gateway's
+ * help. ED25519 accounts have no such address and return null — those sessions
+ * are owned by the gateway operator instead.
+ */
+export async function evmAddressForAccount(
+  accountId: string,
+  network: Network,
+): Promise<`0x${string}` | null> {
+  const base = mirrorNodeUrlForNetwork(network);
+
+  try {
+    const response = await fetch(`${base}/api/v1/accounts/${accountId}`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+
+    const body = (await response.json()) as MirrorAccountResponse;
+    const address = body.evm_address;
+
+    // Long-zero aliases (0x000…<account num>) are synthesised from the account
+    // id rather than derived from a key, so nobody can sign for them.
+    if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) return null;
+    if (address.toLowerCase().startsWith("0x000000000000000000000000")) {
+      return null;
+    }
+
+    return address.toLowerCase() as `0x${string}`;
+  } catch (error) {
+    logger.warn(
+      { err: error, accountId },
+      "could not read the EVM alias for this account",
+    );
+    return null;
+  }
 }
 
 /** Look up the public key Hedera has on record for an account. */

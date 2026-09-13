@@ -18,7 +18,8 @@ Wallet ──▶ Session key ──▶ Router402 gateway ──▶ Claude / Gemi
 ```
 apps/gateway      Express + Prisma gateway: routing, metering, pricing, x402
 apps/web          Next.js chat, analytics and settings interface
-packages/shared   Model catalogue, pricing maths, wire types
+packages/shared   Pricing maths, wire types, the catalogue seed
+packages/ens      ENSv2 namespace: agent names and session names on Sepolia
 ```
 
 Turborepo + Bun workspaces. Node 20+, Bun 1.3+.
@@ -46,6 +47,7 @@ bun run dev                   # gateway on :4021, web on :3000
 | `X402_ASSET_ID`          | HTS asset callers pay in; defaults to USDC for the network     |
 | `X402_MARGIN`            | Gateway margin over upstream cost (`0.1` = 10%)                |
 | `SESSION_JWT_SECRET`     | Signs session tokens; `openssl rand -hex 32`                   |
+| `ENS_*`                  | ENSv2 registries; optional, see [docs/ens.md](docs/ens.md)     |
 
 A model that has no key configured returns `503` rather than failing at call
 time; the rest of the catalogue keeps working.
@@ -70,6 +72,31 @@ POST /v1/sessions             → { token, session }
 GET  /v1/sessions/current
 POST /v1/sessions/current/revoke
 ```
+
+### Names
+
+Sessions and models are **ENSv2 names**, not rows and constants.
+
+A session is registered in a `PermissionedRegistry` as
+`sabc123.keys.router402.eth`: the registry holds the expiry and enforces it,
+revoking is `unregister()` rather than a database flag only this gateway can
+see, and the name is non-transferable because the owner is granted
+`ROLE_UNREGISTER` and nothing else. Where the caller's Hedera account is
+ECDSA-backed the name is registered to *their* EVM alias, so they can burn the
+session without the gateway's help. `requireSession` treats the registry as the
+authority on whether a session is still open.
+
+The model catalogue is read off ENS at runtime — price, provider, upstream id,
+the Hedera account that gets paid and the endpoint that serves it are text
+records on `claude-opus-5.router402.eth` and friends. `priceRequest` quotes
+from those records, so changing a price is a transaction, not a deploy, and a
+third party can list an agent by registering a name. `GET /v1/models` reports
+whether the catalogue came from ENS or fell back to the built-in seed.
+
+The `ENS_*` variables are optional: leave them unset and the gateway serves the
+built-in catalogue with database-only sessions. [docs/ens.md](docs/ens.md) has
+the namespace layout, the setup runbook, and an honest account of what a
+gateway-signed design does and does not enforce.
 
 ### Pricing
 

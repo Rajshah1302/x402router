@@ -1,4 +1,4 @@
-# Router402 gateway — single-stage image so the workspace install, the shared
+bun run --cwd packages/ens ens:verify # Router402 gateway — single-stage image so the workspace install, the shared
 # build, `prisma generate`, and the tsc build all share one node_modules tree.
 # The generated Prisma client lives under src/generated (gitignored), so it must
 # be regenerated here before the gateway compiles.

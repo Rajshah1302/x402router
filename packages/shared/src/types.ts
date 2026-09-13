@@ -123,6 +123,14 @@ export interface SessionInfo {
   spendCapAtomic: string;
   spentAtomic: string;
   status: "active" | "expired" | "revoked" | "exhausted";
+  /**
+   * The ENSv2 name this session is registered as, when the gateway has the
+   * registries configured. The name is the session: its expiry and its
+   * revocation are registry state, not database state.
+   */
+  ensName: string | null;
+  /** Address owning the session name — the caller's EVM alias where it has one. */
+  ensOwner: string | null;
 }
 
 export interface UsageSummary {

@@ -1,6 +1,12 @@
 import { Router } from "express";
-import { MODELS, assetAtomicToUsd, quoteRequest } from "@router402/shared";
+import { assetAtomicToUsd, quoteRequest } from "@router402/shared";
 import { auditInfo } from "../audit/hcs.js";
+import {
+  catalogueModels,
+  catalogueSource,
+  ensNameForModel,
+} from "../catalogue.js";
+import { ensInfo } from "../ens.js";
 import { env } from "../env.js";
 import { x402Config } from "../x402.js";
 
@@ -10,10 +16,13 @@ const round = (value: number) => Math.round(value * 1e6) / 1e6;
 
 /** The catalogue with Router402's own pricing attached, in the wire shape. */
 export function serializedModels() {
-  return MODELS.map((model) => ({
+  return catalogueModels().map((model) => ({
     id: model.id,
     object: "model",
     name: model.displayName,
+    // Present only when the entry was resolved from ENS, so a client can tell
+    // a published agent from one baked into this build.
+    ens_name: ensNameForModel(model.id),
     provider: model.provider,
     context_length: model.contextWindow,
     max_output_tokens: model.maxOutputTokens,
@@ -41,6 +50,8 @@ modelsRouter.get("/v1/models", (_req, res) => {
   res.json({
     object: "list",
     data: serializedModels(),
+    source: catalogueSource(),
+    ens: ensInfo(),
     x402: { ...x402Config, audit: auditInfo() },
   });
 });

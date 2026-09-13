@@ -3,6 +3,7 @@ import { issueSessionToken } from "../auth/session.js";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
 import { logger } from "../logger.js";
+import { registerSessionName } from "../session-names.js";
 import { createHarnessPaymentHeader } from "../x402.js";
 import { decryptPrivateKey, hashHarnessToken } from "./crypto.js";
 
@@ -74,6 +75,25 @@ async function ensureSession(record: HarnessRecord): Promise<string> {
       expiresAt,
     },
   });
+
+  // Harness sessions get a name like any other. They are the most custodial
+  // thing this gateway does, so an expiring, publicly revocable record of
+  // exactly what was authorised is worth more here than anywhere else.
+  const registered = await registerSessionName({
+    sessionId: session.id,
+    walletAddress: record.account.walletAddress,
+    sessionAccountId: record.sessionAccountId,
+    capTotalAtomic: record.spendCapAtomic,
+    capPerRequestAtomic: record.perRequestCapAtomic,
+    expiresAt,
+  });
+
+  if (registered) {
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { ensName: registered.ensName, ensOwner: registered.owner },
+    });
+  }
 
   return issueSessionToken(
     {

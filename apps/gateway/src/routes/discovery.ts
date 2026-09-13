@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { auditInfo } from "../audit/hcs.js";
+import { ensInfo } from "../ens.js";
 import { env } from "../env.js";
 import { x402Config } from "../x402.js";
 import { serializedModels } from "./models.js";
@@ -56,6 +57,7 @@ discoveryRouter.get("/.well-known/agent.json", (req, res) => {
       },
     ],
     x402: { ...x402Config, audit: auditInfo() },
+    ens: ensInfo(),
   });
 });
 
@@ -64,6 +66,9 @@ discoveryRouter.get("/v1/discovery", (req, res) => {
   res.json({
     service: { ...SERVICE, url: base },
     payment: { ...x402Config, audit: auditInfo() },
+    // Where this gateway's agents and sessions live in the ENS namespace, so
+    // a caller can resolve an agent's terms without trusting this response.
+    ens: ensInfo(),
     endpoints: [
       {
         method: "GET",

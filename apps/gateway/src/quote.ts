@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import {
   DEFAULT_MODEL_ID,
-  findModel,
   quoteRequest,
   type ChatCompletionRequest,
   type ModelSpec,
   type Quote,
 } from "@router402/shared";
+import { findModel } from "./catalogue.js";
 import { env } from "./env.js";
 import { providerFor } from "./providers/index.js";
 

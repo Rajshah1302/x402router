@@ -126,6 +126,12 @@ export function Settings() {
                   {new Date(session.expiresAt).toLocaleString()}
                 </span>
               </div>
+              {session.ensName ? (
+                <div className="status-row">
+                  <span>ENS name</span>
+                  <span className="mono">{session.ensName}</span>
+                </div>
+              ) : null}
               <div className="status-row">
                 <span>Spent</span>
                 <span className="mono">
@@ -157,6 +163,15 @@ export function Settings() {
                 Revoke session
               </button>
             </div>
+            {session.ensName ? (
+              <p className="subtitle" style={{ marginTop: 12 }}>
+                This session is registered on ENSv2 as{" "}
+                <span className="mono">{session.ensName}</span>. Its expiry and
+                its revocation are registry state on Sepolia, so anyone can
+                check whether it was still open when a payment settled —
+                revoking burns the name.
+              </p>
+            ) : null}
           </>
         ) : (
           <p className="subtitle" style={{ margin: 0 }}>

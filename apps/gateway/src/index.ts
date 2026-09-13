@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { pinoHttp } from "pino-http";
+import { catalogueSource, initializeCatalogue } from "./catalogue.js";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
 import { errorHandler } from "./middleware/error.js";
@@ -108,12 +109,19 @@ export function createApp() {
 
 async function main(): Promise<void> {
   await initializeX402();
+  // Load the catalogue from ENS before accepting traffic, so the first request
+  // is priced off published records rather than the built-in fallback.
+  await initializeCatalogue();
 
   const app = createApp();
 
   app.listen(env.PORT, () => {
     logger.info(
-      { port: env.PORT, network: env.X402_NETWORK },
+      {
+        port: env.PORT,
+        network: env.X402_NETWORK,
+        catalogue: catalogueSource(),
+      },
       "Router402 gateway listening",
     );
   });

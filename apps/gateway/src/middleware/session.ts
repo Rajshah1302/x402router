@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { SessionTokenError, verifySessionToken } from "../auth/session.js";
 import { runWithContext, type RequestContext } from "../context.js";
 import { prisma } from "../db.js";
+import { isSessionNameLive } from "../session-names.js";
 import { HttpError } from "./error.js";
 
 export type SessionRecord = Awaited<ReturnType<typeof loadSession>>;
@@ -18,6 +19,21 @@ async function loadSession(sessionId: string) {
     throw new HttpError(401, "Session has expired");
   if (session.spentAtomic >= session.spendCapAtomic)
     throw new HttpError(402, "Session spend cap is exhausted");
+
+  // The registry has the last word on whether the session is open. The row
+  // above can only say what this gateway believes; the name says what anyone
+  // can verify, and an expiry or an `unregister()` there ends the session even
+  // if the row still looks healthy. A null answer means ENS could not be
+  // reached, and the row stands on its own.
+  if (session.ensName) {
+    const live = await isSessionNameLive(session.id);
+    if (live === false) {
+      throw new HttpError(
+        401,
+        `Session name ${session.ensName} is no longer registered. Open a new session at POST /v1/sessions.`,
+      );
+    }
+  }
 
   return session;
 }

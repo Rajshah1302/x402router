@@ -12,6 +12,10 @@ import { prisma } from "../db.js";
 import { env } from "../env.js";
 import { HttpError } from "../middleware/error.js";
 import { requireSession } from "../middleware/session.js";
+import {
+  registerSessionName,
+  unregisterSessionName,
+} from "../session-names.js";
 
 const HederaAccountId = z.string().regex(/^\d+\.\d+\.\d+$/, "expected a Hedera account id like 0.0.1234");
 
@@ -40,6 +44,8 @@ export function toSessionInfo(session: {
   revokedAt: Date | null;
   spendCapAtomic: bigint;
   spentAtomic: bigint;
+  ensName: string | null;
+  ensOwner: string | null;
   account: { walletAddress: string };
 }): SessionInfo {
   const status: SessionInfo["status"] = session.revokedAt
@@ -61,6 +67,8 @@ export function toSessionInfo(session: {
     spendCapAtomic: session.spendCapAtomic.toString(),
     spentAtomic: session.spentAtomic.toString(),
     status,
+    ensName: session.ensName,
+    ensOwner: session.ensOwner,
   };
 }
 
@@ -161,6 +169,27 @@ sessionsRouter.post("/v1/sessions", async (req, res, next) => {
       include: { account: true },
     });
 
+    // Register the session as a name. The registry, not this row, is what
+    // makes the expiry and the revocation checkable by anyone; the row only
+    // counts spend. A failure here is logged and skipped rather than failing
+    // the session — see `session-names.ts`.
+    const registered = await registerSessionName({
+      sessionId: session.id,
+      walletAddress: body.walletAddress,
+      sessionAccountId: body.sessionAccountId,
+      capTotalAtomic: spendCapAtomic,
+      capPerRequestAtomic: perRequestCapAtomic,
+      expiresAt,
+    });
+
+    const named = registered
+      ? await prisma.session.update({
+          where: { id: session.id },
+          data: { ensName: registered.ensName, ensOwner: registered.owner },
+          include: { account: true },
+        })
+      : session;
+
     const token = await issueSessionToken(
       {
         sessionId: session.id,
@@ -170,7 +199,7 @@ sessionsRouter.post("/v1/sessions", async (req, res, next) => {
       expiresAt,
     );
 
-    res.status(201).json({ token, session: toSessionInfo(session) });
+    res.status(201).json({ token, session: toSessionInfo(named) });
   } catch (error) {
     next(error);
   }
@@ -185,12 +214,18 @@ sessionsRouter.post(
   requireSession(),
   async (req, res, next) => {
     try {
+      // Burn the name first. If that fails the database revocation still
+      // stands — this gateway will refuse the session — but the on-chain
+      // record would outlive it, so the response says which happened.
+      const unregistered = await unregisterSessionName(req.session!.id);
+
       const session = await prisma.session.update({
         where: { id: req.session!.id },
         data: { revokedAt: new Date() },
         include: { account: true },
       });
-      res.json({ session: toSessionInfo(session) });
+
+      res.json({ session: toSessionInfo(session), ensUnregistered: unregistered });
     } catch (error) {
       next(error);
     }

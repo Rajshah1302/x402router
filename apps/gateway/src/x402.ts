@@ -16,6 +16,7 @@ import { createClientHederaSigner, PrivateKey } from "@x402/hedera";
 import { ExactHederaScheme } from "@x402/hedera/exact/server";
 import { paymentMiddlewareFromHTTPServer } from "@x402/express";
 import { currentContext } from "./context.js";
+import { catalogueSource, ensNameForModel } from "./catalogue.js";
 import { env } from "./env.js";
 import { recordSettlement } from "./ledger.js";
 import { logger } from "./logger.js";
@@ -97,6 +98,11 @@ const quotePreview = async (context: HTTPRequestContext) => {
       },
       quote: {
         model: priced.model.id,
+        // The name this price came from. `priceRequest` quotes off the
+        // catalogue resolved from ENS, so the challenge names its own source:
+        // change `r402:price:output` on that name and this number moves.
+        ens_name: ensNameForModel(priced.model.id),
+        priced_from: catalogueSource(),
         provider: priced.model.provider,
         input_tokens: priced.quote.inputTokens,
         authorized_output_tokens: priced.quote.maxOutputTokens,
