@@ -13,6 +13,7 @@ import {
 import {
   closeInferenceRequest,
   failInferenceRequest,
+  linkPaymentToRequest,
   openInferenceRequest,
 } from "../ledger.js";
 import { logger } from "../logger.js";
@@ -171,6 +172,10 @@ chatRouter.get("/v1/chat/stream/:token", async (req, res, next) => {
     amountAtomic: priced.quote.amountAtomic,
     streamed: true,
   });
+
+  // The payment settled on the POST, before this row existed; link it now so
+  // GET /v1/requests/:id can surface the Hedera transaction id.
+  await linkPaymentToRequest(ctx.paymentId, requestId);
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");

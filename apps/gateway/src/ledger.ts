@@ -78,8 +78,8 @@ export async function recordSettlement(context: RequestContext): Promise<void> {
   if (!settlement) return;
 
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.payment.create({
+    const paymentId = await prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.create({
         data: {
           accountId: context.accountId,
           sessionId: context.sessionId,
@@ -94,6 +94,7 @@ export async function recordSettlement(context: RequestContext): Promise<void> {
           errorMessage: settlement.errorMessage ?? null,
           settledAt: settlement.success ? new Date() : null,
         },
+        select: { id: true },
       });
 
       if (settlement.success) {
@@ -102,13 +103,44 @@ export async function recordSettlement(context: RequestContext): Promise<void> {
           data: { spentAtomic: { increment: settlement.amountAtomic } },
         });
       }
+
+      return payment.id;
     });
+
+    context.paymentId = paymentId;
   } catch (error) {
     // The payment is already on-chain; losing the ledger row must not fail the
     // caller's request, but it does need to be loud.
     logger.error(
       { err: error, sessionId: context.sessionId, tx: settlement.transactionId },
       "Settled payment could not be written to the ledger",
+    );
+  }
+}
+
+/**
+ * Attach a settled payment to the inference row it paid for.
+ *
+ * On the streaming path the payment settles during `POST /v1/chat/stream`,
+ * before the completion exists, so `Payment.inferenceRequestId` is written as
+ * null. When the delivery ticket is later claimed and the inference row is
+ * created, this closes the loop so `GET /v1/requests/:id` can find the
+ * settlement.
+ */
+export async function linkPaymentToRequest(
+  paymentId: string | undefined,
+  inferenceRequestId: string,
+): Promise<void> {
+  if (!paymentId) return;
+  try {
+    await prisma.payment.update({
+      where: { id: paymentId },
+      data: { inferenceRequestId },
+    });
+  } catch (error) {
+    logger.error(
+      { err: error, paymentId, inferenceRequestId },
+      "Could not link payment to its inference request",
     );
   }
 }

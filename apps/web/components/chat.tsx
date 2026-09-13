@@ -5,12 +5,14 @@ import type { ChatCompletionChunk, ChatMessage } from "@router402/shared";
 import {
   GATEWAY_URL,
   fetchModels,
-  fetchRequest,
-  payForStream,
   type ModelOption,
+  type StreamTicket,
 } from "@/lib/gateway";
-import { ASSET } from "@/lib/asset";
+import { formatUsd } from "@/lib/asset";
+import { LocalKeyWallet } from "@/lib/wallet";
+import { payWithProgress, type PaymentProgress } from "@/lib/x402-flow";
 import { useSession } from "@/lib/session-context";
+import { PaymentFlow } from "@/components/payment-flow";
 
 interface Turn extends ChatMessage {
   id: string;
@@ -24,12 +26,15 @@ interface Turn extends ChatMessage {
   };
   pending?: boolean;
   failed?: string;
+  /** Live x402 payment progress, driving the inline animation. */
+  flow?: PaymentProgress;
+  elapsedMs?: number;
 }
 
 const MAX_TOKENS_CHOICES = [256, 512, 1024, 2048, 4096];
 
 export function Chat() {
-  const { payFetch, token, refresh } = useSession();
+  const { wallet, session, token, refresh } = useSession();
 
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelId, setModelId] = useState("");
@@ -58,7 +63,7 @@ export function Chat() {
 
   const send = useCallback(async () => {
     const prompt = draft.trim();
-    if (!prompt || !payFetch || !token || busy) return;
+    if (!prompt || !token || busy) return;
 
     setError(null);
     setBusy(true);
@@ -81,7 +86,7 @@ export function Chat() {
     setTurns((current) => [
       ...current,
       userTurn,
-      { id: replyId, role: "assistant", content: "", pending: true },
+      { id: replyId, role: "assistant", content: "", pending: true, flow: { phase: "quoting" } },
     ]);
 
     const patch = (changes: Partial<Turn>) =>
@@ -91,33 +96,78 @@ export function Chat() {
         ),
       );
 
+    const startedAt = Date.now();
+    const onProgress = (progress: PaymentProgress) =>
+      setTurns((current) =>
+        current.map((turn) =>
+          turn.id === replyId
+            ? {
+                ...turn,
+                flow: {
+                  ...(turn.flow ?? { phase: "quoting" as const }),
+                  ...progress,
+                },
+              }
+            : turn,
+        ),
+      );
+
     try {
-      // Step 1 — pay. The x402 handshake happens inside `payFetch`, signed by
-      // the session key, with no prompt to the user.
-      const ticket = await payForStream(payFetch, token, {
-        model: modelId,
-        messages: history,
-        max_tokens: maxTokens,
+      if (!(wallet instanceof LocalKeyWallet) || !session) {
+        throw new Error("Session is not ready — reconnect your wallet.");
+      }
+
+      // Step 1 — pay. The x402 handshake runs step by step so the UI can show
+      // it, signed by the session key with no prompt to the user.
+      const { response, settlement } = await payWithProgress({
+        sessionAccountId: session.sessionAccountId,
+        sessionPrivateKey: wallet.exportPrivateKey(),
+        perRequestCapAtomic: (
+          BigInt(session.spendCapAtomic) - BigInt(session.spentAtomic)
+        ).toString(),
+        url: `${GATEWAY_URL}/v1/chat/stream`,
+        init: {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            model: modelId,
+            messages: history,
+            max_tokens: maxTokens,
+          }),
+        },
+        onProgress,
       });
+
+      if (!response.ok) {
+        throw new Error(
+          (await response.text()) || `Payment failed (${response.status})`,
+        );
+      }
+
+      const ticket = (await response.json()) as StreamTicket;
 
       patch({
         cost: {
           amountUsd: ticket.quote.amount_usd,
           authorizedOutputTokens: ticket.quote.authorized_output_tokens,
+          transactionId: settlement?.transactionId ?? null,
         },
       });
 
       // Step 2 — collect. The payment has settled, so this leg is ungated and
       // streams token by token.
-      const response = await fetch(
+      const streamResponse = await fetch(
         `${GATEWAY_URL}/v1/chat/stream/${ticket.delivery_token}`,
       );
 
-      if (!response.ok || !response.body) {
-        throw new Error(`Delivery failed with status ${response.status}`);
+      if (!streamResponse.ok || !streamResponse.body) {
+        throw new Error(`Delivery failed with status ${streamResponse.status}`);
       }
 
-      const reader = response.body.getReader();
+      const reader = streamResponse.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let text = "";
@@ -161,35 +211,17 @@ export function Chat() {
       patch({
         content: text,
         pending: false,
+        elapsedMs: Date.now() - startedAt,
         cost: {
           amountUsd: ticket.quote.amount_usd,
           authorizedOutputTokens: ticket.quote.authorized_output_tokens,
           actualOutputTokens,
           requestId,
+          transactionId: settlement?.transactionId ?? null,
         },
       });
 
       void refresh();
-
-      // The Hedera transaction id lands once the facilitator confirms, which is
-      // after the tokens have already been delivered.
-      if (requestId) {
-        fetchRequest(payFetch, token, requestId)
-          .then((detail) =>
-            patch({
-              cost: {
-                amountUsd: detail.x402.amount_usd,
-                authorizedOutputTokens: detail.usage.authorized_output_tokens,
-                actualOutputTokens: detail.usage.completion_tokens,
-                requestId,
-                transactionId: detail.x402.transaction_id,
-              },
-            }),
-          )
-          .catch(() => {
-            // A missing transaction id is cosmetic; the answer is already here.
-          });
-      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       setError(message);
@@ -197,7 +229,7 @@ export function Chat() {
     } finally {
       setBusy(false);
     }
-  }, [busy, draft, maxTokens, modelId, payFetch, refresh, token, turns]);
+  }, [busy, draft, maxTokens, modelId, refresh, token, turns, wallet, session]);
 
   const selected = models.find((model) => model.id === modelId);
 
@@ -254,6 +286,16 @@ export function Chat() {
             <div className="message-role">
               {turn.role === "user" ? "You" : (selected?.name ?? "Assistant")}
             </div>
+            {turn.flow ? (
+              <PaymentFlow
+                phase={turn.flow.phase}
+                challenge={turn.flow.challenge}
+                settlement={turn.flow.settlement}
+                done={!turn.pending}
+                failed={turn.failed}
+                elapsedMs={turn.elapsedMs}
+              />
+            ) : null}
             <div className="message-body">
               {turn.failed ? (
                 <span style={{ color: "var(--danger)" }}>{turn.failed}</span>
@@ -263,18 +305,11 @@ export function Chat() {
             </div>
             {turn.cost ? (
               <div className="message-meta">
-                <span>
-                  ${turn.cost.amountUsd.toFixed(6)} {ASSET.symbol}
-                </span>
+                <span>{formatUsd(turn.cost.amountUsd)}</span>
                 <span>
                   {turn.cost.actualOutputTokens ?? "—"} /{" "}
                   {turn.cost.authorizedOutputTokens} output tokens used
                 </span>
-                {turn.cost.transactionId ? (
-                  <span className="mono">{turn.cost.transactionId}</span>
-                ) : turn.pending ? null : (
-                  <span>settling…</span>
-                )}
               </div>
             ) : null}
           </article>
