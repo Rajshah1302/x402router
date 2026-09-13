@@ -92,13 +92,13 @@ export async function createSession(
 
   // Ask the gateway for the exact bytes to sign rather than rebuilding the
   // message here — one definition, no drift between client and server.
-  const { message } = (await unwrap(
+  const { message, authorization } = (await unwrap(
     await fetch(`${GATEWAY_URL}/v1/sessions/challenge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
     }),
-  )) as { message: string };
+  )) as { message: string; authorization: { expiresAt: string } };
 
   const signature = await wallet.signMessage(message);
 
@@ -106,7 +106,11 @@ export async function createSession(
     await fetch(`${GATEWAY_URL}/v1/sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...request, signature }),
+      body: JSON.stringify({
+        ...request,
+        expiresAt: authorization.expiresAt,
+        signature,
+      }),
     }),
   )) as { token: string; session: SessionInfo };
 }

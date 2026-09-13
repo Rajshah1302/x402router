@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { NETWORK, fetchModels, type ModelOption } from "@/lib/gateway";
+import { atomicToUsd } from "@/lib/asset";
 import { useSession } from "@/lib/session-context";
 
 export function Settings() {
@@ -13,8 +14,8 @@ export function Settings() {
     fetchModels().then(setModels).catch(() => setModels([]));
   }, []);
 
-  const spendCap = session ? Number(session.spendCapAtomic) / 1e6 : 0;
-  const spent = session ? Number(session.spentAtomic) / 1e6 : 0;
+  const spendCap = session ? atomicToUsd(session.spendCapAtomic) : 0;
+  const spent = session ? atomicToUsd(session.spentAtomic) : 0;
 
   return (
     <div className="page">

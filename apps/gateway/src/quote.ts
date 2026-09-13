@@ -137,6 +137,7 @@ export async function priceRequest(body: unknown): Promise<PricedRequest> {
       inputTokens,
       request.max_tokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
       env.X402_MARGIN,
+      env.paymentAsset,
     ),
   };
 

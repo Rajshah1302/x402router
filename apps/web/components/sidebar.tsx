@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/lib/session-context";
 import { NETWORK } from "@/lib/gateway";
+import { atomicToUsd } from "@/lib/asset";
 
 const LINKS = [
   { href: "/", label: "Chat" },
@@ -61,8 +62,8 @@ export function Sidebar() {
           <div className="status-row">
             <span>Spent</span>
             <span className="mono">
-              ${(Number(session.spentAtomic) / 1e6).toFixed(4)} / $
-              {(Number(session.spendCapAtomic) / 1e6).toFixed(2)}
+              ${atomicToUsd(session.spentAtomic).toFixed(4)} / $
+              {atomicToUsd(session.spendCapAtomic).toFixed(2)}
             </span>
           </div>
         ) : null}

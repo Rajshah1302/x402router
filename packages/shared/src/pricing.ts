@@ -2,7 +2,32 @@ import type { ModelSpec } from "./models.js";
 
 /** USDC on Hedera (HTS) carries 6 decimals. */
 export const USDC_DECIMALS = 6;
-const ATOMIC_PER_USDC = 10 ** USDC_DECIMALS;
+
+/**
+ * A settlement asset: an HTS token, or native HBAR (`0.0.0`).
+ *
+ * `usdPrice` is the USD value of one whole unit — 1 for a stablecoin, a market
+ * rate for HBAR. Amounts on the wire are always in the asset's smallest unit
+ * (`decimals`): HBAR is quoted in tinybars, USDC in micro-units.
+ */
+export interface PaymentAsset {
+  id: string;
+  symbol: string;
+  decimals: number;
+  usdPrice: number;
+}
+
+export const USDC: PaymentAsset = {
+  id: "0.0.429274",
+  symbol: "USDC",
+  decimals: USDC_DECIMALS,
+  usdPrice: 1,
+};
+
+/** Native HBAR (`0.0.0`); its USD price comes from configuration. */
+export function hbar(usdPrice: number): PaymentAsset {
+  return { id: "0.0.0", symbol: "HBAR", decimals: 8, usdPrice };
+}
 
 /**
  * Gateway margin over upstream provider cost, as a fraction. 0.1 = 10%.
@@ -12,11 +37,10 @@ const ATOMIC_PER_USDC = 10 ** USDC_DECIMALS;
 export const DEFAULT_MARGIN = 0.1;
 
 /**
- * Smallest amount Router402 will quote. One atomic unit of USDC is $0.000001,
- * which is below what any settlement is worth doing, so trivial requests are
- * floored here rather than rounded to zero.
+ * Smallest amount Router402 will quote, in USD. Below this a settlement is not
+ * worth doing, so trivial requests are floored rather than rounded to zero.
  */
-export const MIN_CHARGE_ATOMIC = 100n; // $0.0001
+export const MIN_CHARGE_USD = 0.0001;
 
 export interface TokenUsage {
   inputTokens: number;
@@ -32,14 +56,32 @@ export function providerCostUsd(model: ModelSpec, usage: TokenUsage): number {
   );
 }
 
-/** Convert a USD amount to USDC atomic units, rounding up so we never under-quote. */
-export function usdToAtomic(usd: number): bigint {
+/**
+ * Convert a USD amount to an asset's smallest units, rounding up so we never
+ * under-quote.
+ */
+export function usdToAssetAtomic(
+  usd: number,
+  asset: PaymentAsset = USDC,
+): bigint {
   if (!Number.isFinite(usd) || usd <= 0) return 0n;
-  return BigInt(Math.ceil(usd * ATOMIC_PER_USDC));
+  return BigInt(Math.ceil((usd / asset.usdPrice) * 10 ** asset.decimals));
+}
+
+export function assetAtomicToUsd(
+  atomic: bigint,
+  asset: PaymentAsset = USDC,
+): number {
+  return (Number(atomic) / 10 ** asset.decimals) * asset.usdPrice;
+}
+
+/** USDC-specific convenience wrappers. */
+export function usdToAtomic(usd: number): bigint {
+  return usdToAssetAtomic(usd, USDC);
 }
 
 export function atomicToUsd(atomic: bigint): number {
-  return Number(atomic) / ATOMIC_PER_USDC;
+  return assetAtomicToUsd(atomic, USDC);
 }
 
 /**
@@ -97,6 +139,7 @@ export function quoteRequest(
   inputTokens: number,
   requestedOutputTokens: number,
   marginFraction = DEFAULT_MARGIN,
+  asset: PaymentAsset = USDC,
 ): Quote {
   const thinkingShare = model.reasoning ? REASONING_ALLOWANCE : 0;
 
@@ -116,7 +159,10 @@ export function quoteRequest(
     outputTokens: maxOutputTokens,
   });
   const withMargin = cost * (1 + marginFraction);
-  const amountAtomic = max(usdToAtomic(withMargin), MIN_CHARGE_ATOMIC);
+  const amountAtomic = max(
+    usdToAssetAtomic(withMargin, asset),
+    usdToAssetAtomic(MIN_CHARGE_USD, asset),
+  );
 
   return {
     inputTokens,
@@ -125,7 +171,7 @@ export function quoteRequest(
     thinkingTokens,
     providerCostUsd: cost,
     amountAtomic,
-    amountUsd: atomicToUsd(amountAtomic),
+    amountUsd: assetAtomicToUsd(amountAtomic, asset),
     marginFraction,
   };
 }

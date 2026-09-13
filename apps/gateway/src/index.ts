@@ -26,8 +26,27 @@ export function createApp() {
     cors({
       origin: env.corsOrigins,
       // The payment handshake rides on these headers in both directions.
-      allowedHeaders: ["Content-Type", "Authorization", "X-PAYMENT"],
-      exposedHeaders: ["X-PAYMENT-RESPONSE"],
+      // x402 v1 uses X-PAYMENT / X-PAYMENT-RESPONSE; v2 uses
+      // PAYMENT-SIGNATURE / PAYMENT-REQUIRED / PAYMENT-RESPONSE. A browser can
+      // only read a response header that is exposed here, and the v2 payment
+      // requirements arrive solely in PAYMENT-REQUIRED — hide it and the
+      // client reports "Invalid payment required response".
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-PAYMENT",
+        "PAYMENT-SIGNATURE",
+        // @x402/fetch sets Access-Control-Expose-Headers on the request (a
+        // no-op server-side), so the browser includes it in the preflight for
+        // the paid retry. Without it here the retry is blocked and the payment
+        // never leaves the browser.
+        "Access-Control-Expose-Headers",
+      ],
+      exposedHeaders: [
+        "X-PAYMENT-RESPONSE",
+        "PAYMENT-REQUIRED",
+        "PAYMENT-RESPONSE",
+      ],
     }),
   );
   app.use(express.json({ limit: "4mb" }));

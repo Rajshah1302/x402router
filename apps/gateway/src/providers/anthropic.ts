@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ChatMessage, ModelSpec } from "@router402/shared";
 import { env } from "../env.js";
+import { ProviderUnavailableError } from "./errors.js";
 import {
   splitSystem,
   type CompletionChunk,
@@ -17,8 +18,6 @@ function client(): Anthropic {
   }
   return new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 }
-
-export class ProviderUnavailableError extends Error {}
 
 function toParams(request: CompletionRequest) {
   const { system, turns } = splitSystem(request.messages);

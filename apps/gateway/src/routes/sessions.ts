@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
-import { usdToAtomic, type SessionInfo } from "@router402/shared";
+import { usdToAssetAtomic, type SessionInfo } from "@router402/shared";
 import { issueSessionToken } from "../auth/session.js";
 import {
   authorizationMessage,
@@ -25,6 +25,8 @@ const CreateSessionSchema = z.object({
   perRequestCapUsd: z.number().positive().max(100),
   ttlHours: z.number().positive().max(720).optional(),
   nonce: z.string().min(8),
+  /** Expiry from the challenge, echoed back so both sides sign the same message. */
+  expiresAt: z.iso.datetime(),
   /** Wallet signature over `authorizationMessage(...)`, hex-encoded. */
   signature: z.string().min(1),
 });
@@ -70,7 +72,10 @@ export const sessionsRouter: Router = Router();
  */
 sessionsRouter.post("/v1/sessions/challenge", (req, res, next) => {
   try {
-    const body = CreateSessionSchema.omit({ signature: true }).parse(req.body);
+    const body = CreateSessionSchema.omit({
+      signature: true,
+      expiresAt: true,
+    }).parse(req.body);
     const expiresAt = new Date(
       Date.now() +
         (body.ttlHours ?? env.SESSION_DEFAULT_TTL_HOURS) * 60 * 60 * 1000,
@@ -81,8 +86,8 @@ sessionsRouter.post("/v1/sessions/challenge", (req, res, next) => {
       sessionAccountId: body.sessionAccountId,
       sessionPublicKey: body.sessionPublicKey,
       network: env.X402_NETWORK,
-      spendCapAtomic: usdToAtomic(body.spendCapUsd).toString(),
-      perRequestCapAtomic: usdToAtomic(body.perRequestCapUsd).toString(),
+      spendCapAtomic: usdToAssetAtomic(body.spendCapUsd, env.paymentAsset).toString(),
+      perRequestCapAtomic: usdToAssetAtomic(body.perRequestCapUsd, env.paymentAsset).toString(),
       expiresAt: expiresAt.toISOString(),
       nonce: body.nonce,
     };
@@ -97,12 +102,22 @@ sessionsRouter.post("/v1/sessions", async (req, res, next) => {
   try {
     const body = CreateSessionSchema.parse(req.body);
 
-    const expiresAt = new Date(
-      Date.now() +
-        (body.ttlHours ?? env.SESSION_DEFAULT_TTL_HOURS) * 60 * 60 * 1000,
-    );
-    const spendCapAtomic = usdToAtomic(body.spendCapUsd);
-    const perRequestCapAtomic = usdToAtomic(body.perRequestCapUsd);
+    const expiresAt = new Date(body.expiresAt);
+
+    const clockSkewMs = 60 * 1000;
+    const maxAheadMs = 720 * 60 * 60 * 1000;
+    if (expiresAt.getTime() < Date.now() - clockSkewMs) {
+      throw new HttpError(400, "`expiresAt` must be in the future");
+    }
+    if (expiresAt.getTime() > Date.now() + maxAheadMs) {
+      throw new HttpError(
+        400,
+        "`expiresAt` cannot be more than 720 hours in the future",
+      );
+    }
+
+    const spendCapAtomic = usdToAssetAtomic(body.spendCapUsd, env.paymentAsset);
+    const perRequestCapAtomic = usdToAssetAtomic(body.perRequestCapUsd, env.paymentAsset);
 
     if (perRequestCapAtomic > spendCapAtomic) {
       throw new HttpError(

@@ -9,6 +9,7 @@ import {
   payForStream,
   type ModelOption,
 } from "@/lib/gateway";
+import { ASSET } from "@/lib/asset";
 import { useSession } from "@/lib/session-context";
 
 interface Turn extends ChatMessage {
@@ -262,7 +263,9 @@ export function Chat() {
             </div>
             {turn.cost ? (
               <div className="message-meta">
-                <span>${turn.cost.amountUsd.toFixed(6)} USDC</span>
+                <span>
+                  ${turn.cost.amountUsd.toFixed(6)} {ASSET.symbol}
+                </span>
                 <span>
                   {turn.cost.actualOutputTokens ?? "—"} /{" "}
                   {turn.cost.authorizedOutputTokens} output tokens used

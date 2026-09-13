@@ -1,7 +1,7 @@
 import { GoogleGenAI, type Content, type GenerateContentResponse } from "@google/genai";
 import type { ChatMessage, ModelSpec } from "@router402/shared";
 import { env } from "../env.js";
-import { ProviderUnavailableError } from "./anthropic.js";
+import { ProviderUnavailableError } from "./errors.js";
 import {
   splitSystem,
   type CompletionChunk,

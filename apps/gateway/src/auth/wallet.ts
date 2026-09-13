@@ -1,6 +1,7 @@
 import { PublicKey } from "@hiero-ledger/sdk";
 import { mirrorNodeUrlForNetwork } from "@x402/hedera";
 import type { Network } from "@x402/core/types";
+import { logger } from "../logger.js";
 
 export class WalletAuthError extends Error {}
 
@@ -100,8 +101,25 @@ export async function verifySessionAuthorization(
     auth.network as Network,
   );
   const message = Buffer.from(authorizationMessage(auth), "utf8");
+  const verified = publicKey.verify(message, signature);
 
-  if (!publicKey.verify(message, signature)) {
+  const onChainKeyDer = publicKey.toStringDer();
+  logger.debug(
+    {
+      walletAddress: auth.walletAddress,
+      onChainKeyDer,
+      providedSessionKey: auth.sessionPublicKey,
+      keysMatch:
+        onChainKeyDer.toLowerCase() ===
+        auth.sessionPublicKey.toLowerCase(),
+      signatureBytes: signature.length,
+      message: authorizationMessage(auth),
+      verified,
+    },
+    "session authorization signature check",
+  );
+
+  if (!verified) {
     throw new WalletAuthError(
       "Signature does not match the wallet's public key",
     );

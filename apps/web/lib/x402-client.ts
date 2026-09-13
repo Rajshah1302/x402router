@@ -1,4 +1,5 @@
 import { NETWORK } from "./gateway";
+import { ASSET } from "./asset";
 import { parsePrivateKey } from "./wallet";
 
 /**
@@ -38,7 +39,7 @@ export async function createPayingFetch(
       allowedAssets: [
         {
           network: NETWORK as `${string}:${string}`,
-          asset: process.env.NEXT_PUBLIC_X402_ASSET ?? "0.0.429274",
+          asset: ASSET.id,
           maxAmountPerPayment: perRequestCapAtomic,
         },
       ],

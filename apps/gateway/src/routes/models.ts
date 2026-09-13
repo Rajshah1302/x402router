@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { MODELS, atomicToUsd, quoteRequest } from "@router402/shared";
+import { MODELS, assetAtomicToUsd, quoteRequest } from "@router402/shared";
 import { env } from "../env.js";
 import { x402Config } from "../x402.js";
 
@@ -28,8 +28,10 @@ modelsRouter.get("/v1/models", (_req, res) => {
         ),
         currency: "USDC",
         // A worked example so a client can sanity-check the quote it gets.
-        example_1k_prompt_256_completion_usd: atomicToUsd(
-          quoteRequest(model, 1000, 256, env.X402_MARGIN).amountAtomic,
+        example_1k_prompt_256_completion_usd: assetAtomicToUsd(
+          quoteRequest(model, 1000, 256, env.X402_MARGIN, env.paymentAsset)
+            .amountAtomic,
+          env.paymentAsset,
         ),
       },
     })),

@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { atomicToUsd, type ChatCompletionChunk } from "@router402/shared";
+import { assetAtomicToUsd, type ChatCompletionChunk } from "@router402/shared";
 import { currentContext } from "../context.js";
 import { prisma } from "../db.js";
+import { env } from "../env.js";
 import {
   claimDeliveryTicket,
   issueDeliveryTicket,
@@ -28,7 +29,10 @@ function enforcePerRequestCap(
 ): void {
   if (priced.quote.amountAtomic > perRequestCapAtomic) {
     const cost = priced.quote.amountUsd.toFixed(6);
-    const cap = atomicToUsd(perRequestCapAtomic).toFixed(6);
+    const cap = assetAtomicToUsd(
+      perRequestCapAtomic,
+      env.paymentAsset,
+    ).toFixed(6);
     throw new HttpError(
       402,
       `This request costs $${cost}, above the session per-request cap of $${cap}. Lower max_tokens, or open a session with a higher cap.`,
@@ -269,7 +273,7 @@ chatRouter.get("/v1/requests/:id", async (req, res, next) => {
       },
       x402: {
         amount_atomic: row.amountAtomic.toString(),
-        amount_usd: atomicToUsd(row.amountAtomic),
+        amount_usd: assetAtomicToUsd(row.amountAtomic, env.paymentAsset),
         transaction_id: row.payment?.transactionId ?? null,
         payer: row.payment?.payer ?? null,
         status: row.payment?.status.toLowerCase() ?? "pending",

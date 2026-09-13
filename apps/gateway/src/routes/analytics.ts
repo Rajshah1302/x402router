@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  atomicToUsd,
+  assetAtomicToUsd,
   findModel,
   type AnalyticsResponse,
   type BreakdownRow,
@@ -8,6 +8,7 @@ import {
   type RecentRequest,
   type SpendBucket,
 } from "@router402/shared";
+import { env } from "../env.js";
 import { prisma } from "../db.js";
 
 export const analyticsRouter: Router = Router();
@@ -78,13 +79,19 @@ analyticsRouter.get("/v1/analytics", async (req, res, next) => {
     ]);
 
     const totalRequests = totals._count._all;
-    const totalSpendUsd = atomicToUsd(totals._sum.amountAtomic ?? 0n);
+    const totalSpendUsd = assetAtomicToUsd(
+      totals._sum.amountAtomic ?? 0n,
+      env.paymentAsset,
+    );
 
     const byModel: BreakdownRow[] = perModel
       .map((group) => ({
         key: group.model,
         label: labelFor(group.model),
-        spendUsd: atomicToUsd(group._sum.amountAtomic ?? 0n),
+        spendUsd: assetAtomicToUsd(
+          group._sum.amountAtomic ?? 0n,
+          env.paymentAsset,
+        ),
         requests: group._count._all,
         inputTokens: group._sum.inputTokens ?? 0,
         outputTokens: group._sum.outputTokens ?? 0,
@@ -101,7 +108,10 @@ analyticsRouter.get("/v1/analytics", async (req, res, next) => {
         inputTokens: 0,
         outputTokens: 0,
       };
-      existing.spendUsd += atomicToUsd(group._sum.amountAtomic ?? 0n);
+      existing.spendUsd += assetAtomicToUsd(
+        group._sum.amountAtomic ?? 0n,
+        env.paymentAsset,
+      );
       existing.requests += group._count._all;
       existing.inputTokens += group._sum.inputTokens ?? 0;
       existing.outputTokens += group._sum.outputTokens ?? 0;
@@ -113,7 +123,7 @@ analyticsRouter.get("/v1/analytics", async (req, res, next) => {
     for (const row of rows) {
       const date = row.createdAt.toISOString().slice(0, 10);
       const bucket = buckets.get(date) ?? { date, spendUsd: 0, requests: 0 };
-      bucket.spendUsd += atomicToUsd(row.amountAtomic);
+      bucket.spendUsd += assetAtomicToUsd(row.amountAtomic, env.paymentAsset);
       bucket.requests += 1;
       buckets.set(date, bucket);
     }
@@ -125,7 +135,7 @@ analyticsRouter.get("/v1/analytics", async (req, res, next) => {
       provider: row.provider,
       inputTokens: row.inputTokens,
       outputTokens: row.outputTokens,
-      costUsd: atomicToUsd(row.amountAtomic),
+      costUsd: assetAtomicToUsd(row.amountAtomic, env.paymentAsset),
       status:
         row.status === "SETTLED"
           ? "settled"
@@ -137,7 +147,7 @@ analyticsRouter.get("/v1/analytics", async (req, res, next) => {
     const recentPayments: RecentPayment[] = payments.map((payment) => ({
       id: payment.id,
       createdAt: payment.createdAt.toISOString(),
-      amountUsd: atomicToUsd(payment.amountAtomic),
+      amountUsd: assetAtomicToUsd(payment.amountAtomic, env.paymentAsset),
       amountAtomic: payment.amountAtomic.toString(),
       asset: payment.asset,
       network: payment.network,
